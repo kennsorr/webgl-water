@@ -30,6 +30,7 @@ var cubemap;
 var renderer;
 var angleX = -25;
 var angleY = -200.5;
+var poolScale = 2;
 
 // Sphere physics info
 var useSpherePhysics = false;
@@ -123,12 +124,12 @@ window.onload = function() {
     var tracer = new GL.Raytracer();
     var ray = tracer.getRayForPixel(x * ratio, y * ratio);
     var pointOnPlane = tracer.eye.add(ray.multiply(-tracer.eye.y / ray.y));
-    var sphereHitTest = GL.Raytracer.hitTestSphere(tracer.eye, ray, center, radius);
+    var sphereHitTest = GL.Raytracer.hitTestSphere(tracer.eye, ray, center.multiply(poolScale), radius * poolScale);
     if (sphereHitTest) {
       mode = MODE_MOVE_SPHERE;
       prevHit = sphereHitTest.hit;
       planeNormal = tracer.getRayForPixel(gl.canvas.width / 2, gl.canvas.height / 2).negative();
-    } else if (Math.abs(pointOnPlane.x) < 1 && Math.abs(pointOnPlane.z) < 1) {
+    } else if (Math.abs(pointOnPlane.x) < poolScale && Math.abs(pointOnPlane.z) < poolScale) {
       mode = MODE_ADD_DROPS;
       duringDrag(x, y);
     } else {
@@ -142,7 +143,7 @@ window.onload = function() {
         var tracer = new GL.Raytracer();
         var ray = tracer.getRayForPixel(x * ratio, y * ratio);
         var pointOnPlane = tracer.eye.add(ray.multiply(-tracer.eye.y / ray.y));
-        water.addDrop(pointOnPlane.x, pointOnPlane.z, 0.03, 0.01);
+        water.addDrop(pointOnPlane.x / poolScale, pointOnPlane.z / poolScale, 0.03 / poolScale, 0.01);
         if (paused) {
           water.updateNormals();
           renderer.updateCaustics(water);
@@ -154,7 +155,7 @@ window.onload = function() {
         var ray = tracer.getRayForPixel(x * ratio, y * ratio);
         var t = -planeNormal.dot(tracer.eye.subtract(prevHit)) / planeNormal.dot(ray);
         var nextHit = tracer.eye.add(ray.multiply(t));
-        center = center.add(nextHit.subtract(prevHit));
+        center = center.add(nextHit.subtract(prevHit).divide(poolScale));
         center.x = Math.max(radius - 1, Math.min(1 - radius, center.x));
         center.y = Math.max(radius - 1, Math.min(10, center.y));
         center.z = Math.max(radius - 1, Math.min(1 - radius, center.z));
@@ -265,10 +266,11 @@ window.onload = function() {
 
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.loadIdentity();
-    gl.translate(0, 0, -4);
+    gl.translate(0, 0, -3);
     gl.rotate(-angleX, 1, 0, 0);
     gl.rotate(-angleY, 0, 1, 0);
     gl.translate(0, 0.5, 0);
+    gl.scale(poolScale, 1, poolScale);
 
     gl.enable(gl.DEPTH_TEST);
     renderer.sphereCenter = center;
