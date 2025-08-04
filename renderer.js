@@ -12,6 +12,7 @@ var helperFunctions = '\
   const vec3 abovewaterColor = vec3(0.25, 1.0, 1.25);\
   const vec3 underwaterColor = vec3(0.4, 0.9, 1.0);\
   const float poolHeight = 1.0;\
+  const float poolSize = 2.0;\
   uniform vec3 light;\
   uniform vec3 sphereCenter;\
   uniform float sphereRadius;\
@@ -46,17 +47,17 @@ var helperFunctions = '\
     vec3 color = vec3(0.5);\
     \
     /* ambient occlusion with walls */\
-    color *= 1.0 - 0.9 / pow((1.0 + sphereRadius - abs(point.x)) / sphereRadius, 3.0);\
-    color *= 1.0 - 0.9 / pow((1.0 + sphereRadius - abs(point.z)) / sphereRadius, 3.0);\
+    color *= 1.0 - 0.9 / pow((poolSize + sphereRadius - abs(point.x)) / sphereRadius, 3.0);\
+    color *= 1.0 - 0.9 / pow((poolSize + sphereRadius - abs(point.z)) / sphereRadius, 3.0);\
     color *= 1.0 - 0.9 / pow((point.y + 1.0 + sphereRadius) / sphereRadius, 3.0);\
     \
     /* caustics */\
     vec3 sphereNormal = (point - sphereCenter) / sphereRadius;\
     vec3 refractedLight = refract(-light, vec3(0.0, 1.0, 0.0), IOR_AIR / IOR_WATER);\
     float diffuse = max(0.0, dot(-refractedLight, sphereNormal)) * 0.5;\
-    vec4 info = texture2D(water, point.xz * 0.5 + 0.5);\
+    vec4 info = texture2D(water, point.xz * (0.5 / poolSize) + 0.5);\
     if (point.y < info.r) {\
-      vec4 caustic = texture2D(causticTex, 0.75 * (point.xz - point.y * refractedLight.xz / refractedLight.y) * 0.5 + 0.5);\
+      vec4 caustic = texture2D(causticTex, 0.75 * ((point.xz - point.y * refractedLight.xz / refractedLight.y) / poolSize) * 0.5 + 0.5);\
       diffuse *= caustic.r * 4.0;\
     }\
     color += diffuse;\
@@ -69,14 +70,14 @@ var helperFunctions = '\
     \
     vec3 wallColor;\
     vec3 normal;\
-    if (abs(point.x) > 0.999) {\
-      wallColor = texture2D(tiles, point.yz * 0.5 + vec2(1.0, 0.5)).rgb;\
+    if (abs(point.x) > poolSize - 0.001) {\
+      wallColor = texture2D(tiles, point.yz * vec2(0.5, 0.5 / poolSize) + vec2(1.0, 0.5)).rgb;\
       normal = vec3(-point.x, 0.0, 0.0);\
-    } else if (abs(point.z) > 0.999) {\
-      wallColor = texture2D(tiles, point.yx * 0.5 + vec2(1.0, 0.5)).rgb;\
+    } else if (abs(point.z) > poolSize - 0.001) {\
+      wallColor = texture2D(tiles, point.yx * vec2(0.5, 0.5 / poolSize) + vec2(1.0, 0.5)).rgb;\
       normal = vec3(0.0, 0.0, -point.z);\
     } else {\
-      wallColor = texture2D(tiles, point.xz * 0.5 + 0.5).rgb;\
+      wallColor = texture2D(tiles, point.xz * (0.5 / poolSize) + 0.5).rgb;\
       normal = vec3(0.0, 1.0, 0.0);\
     }\
     \
@@ -86,13 +87,13 @@ var helperFunctions = '\
     /* caustics */\
     vec3 refractedLight = -refract(-light, vec3(0.0, 1.0, 0.0), IOR_AIR / IOR_WATER);\
     float diffuse = max(0.0, dot(refractedLight, normal));\
-    vec4 info = texture2D(water, point.xz * 0.5 + 0.5);\
+    vec4 info = texture2D(water, point.xz * (0.5 / poolSize) + 0.5);\
     if (point.y < info.r) {\
-      vec4 caustic = texture2D(causticTex, 0.75 * (point.xz - point.y * refractedLight.xz / refractedLight.y) * 0.5 + 0.5);\
+      vec4 caustic = texture2D(causticTex, 0.75 * ((point.xz - point.y * refractedLight.xz / refractedLight.y) / poolSize) * 0.5 + 0.5);\
       scale += diffuse * caustic.r * 2.0 * caustic.g;\
     } else {\
       /* shadow for the rim of the pool */\
-      vec2 t = intersectCube(point, refractedLight, vec3(-1.0, -poolHeight, -1.0), vec3(1.0, 2.0, 1.0));\
+      vec2 t = intersectCube(point, refractedLight, vec3(-poolSize, -poolHeight, -poolSize), vec3(poolSize, 2.0, poolSize));\
       diffuse *= 1.0 / (1.0 + exp(-200.0 / (1.0 + 10.0 * (t.y - t.x)) * (point.y + refractedLight.y * t.y - 2.0 / 12.0)));\
       \
       scale += diffuse * 0.5;\
@@ -114,11 +115,13 @@ function Renderer() {
   this.waterShaders = [];
   for (var i = 0; i < 2; i++) {
     this.waterShaders[i] = new GL.Shader('\
+      const float poolSize = 2.0;\
       uniform sampler2D water;\
       varying vec3 position;\
       void main() {\
         vec4 info = texture2D(water, gl_Vertex.xy * 0.5 + 0.5);\
         position = gl_Vertex.xzy;\
+        position.xz *= poolSize;\
         position.y += info.r;\
         gl_Position = gl_ModelViewProjectionMatrix * vec4(position, 1.0);\
       }\
@@ -133,10 +136,10 @@ function Renderer() {
         if (q < 1.0e6) {\
           color = getSphereColor(origin + ray * q);\
         } else if (ray.y < 0.0) {\
-          vec2 t = intersectCube(origin, ray, vec3(-1.0, -poolHeight, -1.0), vec3(1.0, 2.0, 1.0));\
+          vec2 t = intersectCube(origin, ray, vec3(-poolSize, -poolHeight, -poolSize), vec3(poolSize, 2.0, poolSize));\
           color = getWallColor(origin + ray * t.y);\
         } else {\
-          vec2 t = intersectCube(origin, ray, vec3(-1.0, -poolHeight, -1.0), vec3(1.0, 2.0, 1.0));\
+          vec2 t = intersectCube(origin, ray, vec3(-poolSize, -poolHeight, -poolSize), vec3(poolSize, 2.0, poolSize));\
           vec3 hit = origin + ray * t.y;\
           if (hit.y < 2.0 / 12.0) {\
             color = getWallColor(hit);\
@@ -150,7 +153,7 @@ function Renderer() {
       }\
       \
       void main() {\
-        vec2 coord = position.xz * 0.5 + 0.5;\
+        vec2 coord = position.xz * (0.5 / poolSize) + 0.5;\
         vec4 info = texture2D(water, coord);\
         \
         /* make water look more "peaked" */\
@@ -196,7 +199,7 @@ function Renderer() {
     varying vec3 position;\
     void main() {\
       gl_FragColor = vec4(getSphereColor(position), 1.0);\
-      vec4 info = texture2D(water, position.xz * 0.5 + 0.5);\
+      vec4 info = texture2D(water, position.xz * (0.5 / poolSize) + 0.5);\
       if (position.y < info.r) {\
         gl_FragColor.rgb *= underwaterColor * 1.2;\
       }\
@@ -209,6 +212,7 @@ function Renderer() {
     varying vec3 position;\
     void main() {\
       position = gl_Vertex.xyz;\
+      position.xz *= poolSize;\
       position.y = ((1.0 - position.y) * (7.0 / 12.0) - 1.0) * poolHeight;\
       gl_Position = gl_ModelViewProjectionMatrix * vec4(position, 1.0);\
     }\
@@ -216,7 +220,7 @@ function Renderer() {
     varying vec3 position;\
     void main() {\
       gl_FragColor = vec4(getWallColor(position), 1.0);\
-      vec4 info = texture2D(water, position.xz * 0.5 + 0.5);\
+      vec4 info = texture2D(water, position.xz * (0.5 / poolSize) + 0.5);\
       if (position.y < info.r) {\
         gl_FragColor.rgb *= underwaterColor * 1.2;\
       }\
@@ -232,7 +236,7 @@ function Renderer() {
     \
     /* project the ray onto the plane */\
     vec3 project(vec3 origin, vec3 ray, vec3 refractedLight) {\
-      vec2 tcube = intersectCube(origin, ray, vec3(-1.0, -poolHeight, -1.0), vec3(1.0, 2.0, 1.0));\
+      vec2 tcube = intersectCube(origin, ray, vec3(-poolSize, -poolHeight, -poolSize), vec3(poolSize, 2.0, poolSize));\
       origin += ray * tcube.y;\
       float tplane = (-origin.y - 1.0) / refractedLight.y;\
       return origin + refractedLight * tplane;\
@@ -246,10 +250,10 @@ function Renderer() {
       /* project the vertices along the refracted vertex ray */\
       vec3 refractedLight = refract(-light, vec3(0.0, 1.0, 0.0), IOR_AIR / IOR_WATER);\
       ray = refract(-light, normal, IOR_AIR / IOR_WATER);\
-      oldPos = project(gl_Vertex.xzy, refractedLight, refractedLight);\
-      newPos = project(gl_Vertex.xzy + vec3(0.0, info.r, 0.0), ray, refractedLight);\
+      oldPos = project(gl_Vertex.xzy * vec3(poolSize, 1.0, poolSize), refractedLight, refractedLight);\
+      newPos = project(gl_Vertex.xzy * vec3(poolSize, 1.0, poolSize) + vec3(0.0, info.r, 0.0), ray, refractedLight);\
       \
-      gl_Position = vec4(0.75 * (newPos.xz + refractedLight.xz / refractedLight.y), 0.0, 1.0);\
+      gl_Position = vec4(0.75 * (newPos.xz / poolSize + refractedLight.xz / refractedLight.y), 0.0, 1.0);\
     }\
   ', (hasDerivatives ? '#extension GL_OES_standard_derivatives : enable\n' : '') + '\
     ' + helperFunctions + '\
@@ -280,7 +284,7 @@ function Renderer() {
       gl_FragColor.g = shadow;\
       \
       /* shadow for the rim of the pool */\
-      vec2 t = intersectCube(newPos, -refractedLight, vec3(-1.0, -poolHeight, -1.0), vec3(1.0, 2.0, 1.0));\
+      vec2 t = intersectCube(newPos, -refractedLight, vec3(-poolSize, -poolHeight, -poolSize), vec3(poolSize, 2.0, poolSize));\
       gl_FragColor.r *= 1.0 / (1.0 + exp(-200.0 / (1.0 + 10.0 * (t.y - t.x)) * (newPos.y - refractedLight.y * t.y - 2.0 / 12.0)));\
     }\
   ');

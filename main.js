@@ -30,6 +30,7 @@ var cubemap;
 var renderer;
 var angleX = -25;
 var angleY = -200.5;
+var POOL_SIZE = 2;
 
 // Sphere physics info
 var useSpherePhysics = false;
@@ -77,7 +78,7 @@ window.onload = function() {
     throw new Error('Rendering to floating-point textures is required but not supported');
   }
 
-  center = oldCenter = new GL.Vector(-0.4, -0.75, 0.2);
+  center = oldCenter = new GL.Vector(-0.4 * POOL_SIZE, -0.75, 0.2 * POOL_SIZE);
   velocity = new GL.Vector();
   gravity = new GL.Vector(0, -4, 0);
   radius = 0.25;
@@ -128,7 +129,7 @@ window.onload = function() {
       mode = MODE_MOVE_SPHERE;
       prevHit = sphereHitTest.hit;
       planeNormal = tracer.getRayForPixel(gl.canvas.width / 2, gl.canvas.height / 2).negative();
-    } else if (Math.abs(pointOnPlane.x) < 1 && Math.abs(pointOnPlane.z) < 1) {
+    } else if (Math.abs(pointOnPlane.x) < POOL_SIZE && Math.abs(pointOnPlane.z) < POOL_SIZE) {
       mode = MODE_ADD_DROPS;
       duringDrag(x, y);
     } else {
@@ -142,7 +143,7 @@ window.onload = function() {
         var tracer = new GL.Raytracer();
         var ray = tracer.getRayForPixel(x * ratio, y * ratio);
         var pointOnPlane = tracer.eye.add(ray.multiply(-tracer.eye.y / ray.y));
-        water.addDrop(pointOnPlane.x, pointOnPlane.z, 0.03, 0.01);
+        water.addDrop(pointOnPlane.x / POOL_SIZE, pointOnPlane.z / POOL_SIZE, 0.03, 0.01);
         if (paused) {
           water.updateNormals();
           renderer.updateCaustics(water);
@@ -155,9 +156,9 @@ window.onload = function() {
         var t = -planeNormal.dot(tracer.eye.subtract(prevHit)) / planeNormal.dot(ray);
         var nextHit = tracer.eye.add(ray.multiply(t));
         center = center.add(nextHit.subtract(prevHit));
-        center.x = Math.max(radius - 1, Math.min(1 - radius, center.x));
+        center.x = Math.max(radius - POOL_SIZE, Math.min(POOL_SIZE - radius, center.x));
         center.y = Math.max(radius - 1, Math.min(10, center.y));
-        center.z = Math.max(radius - 1, Math.min(1 - radius, center.z));
+        center.z = Math.max(radius - POOL_SIZE, Math.min(POOL_SIZE - radius, center.z));
         prevHit = nextHit;
         if (paused) renderer.updateCaustics(water);
         break;
@@ -246,7 +247,7 @@ window.onload = function() {
     }
 
     // Displace water around the sphere
-    water.moveSphere(oldCenter, center, radius);
+    water.moveSphere(oldCenter.multiply(1 / POOL_SIZE), center.multiply(1 / POOL_SIZE), radius / POOL_SIZE);
     oldCenter = center;
 
     // Update the water simulation and graphics
@@ -265,7 +266,7 @@ window.onload = function() {
 
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.loadIdentity();
-    gl.translate(0, 0, -4);
+    gl.translate(0, 0, -4 * POOL_SIZE);
     gl.rotate(-angleX, 1, 0, 0);
     gl.rotate(-angleY, 0, 1, 0);
     gl.translate(0, 0.5, 0);
